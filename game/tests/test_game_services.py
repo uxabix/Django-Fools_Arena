@@ -3,8 +3,29 @@
 import pytest
 from django.contrib.auth import get_user_model
 
-from game.models import Card, CardRank, CardSuit, GameDeck, Lobby, LobbyPlayer, PlayerHand
-from game.services import GameError, create_lobby, join_lobby, set_ready, start_game
+from game.models import (
+    Card,
+    CardRank,
+    CardSuit,
+    Game,
+    GameDeck,
+    GamePlayer,
+    Lobby,
+    LobbyPlayer,
+    LobbySettings,
+    PlayerHand,
+    TableCard,
+)
+from game.services import (
+    GameError,
+    PHASE_BUILD,
+    _table_attack_ranks,
+    create_lobby,
+    join_lobby,
+    play_attack,
+    set_ready,
+    start_game,
+)
 
 User = get_user_model()
 
@@ -105,3 +126,116 @@ def test_active_game_blocks_second_start(test_user, second_user, durak_deck_36):
     with pytest.raises(GameError) as exc:
         start_game(lobby, test_user)
     assert exc.value.code == "state"
+
+
+@pytest.mark.django_db
+def test_attack_stays_in_build_for_parallel_defense(test_user, second_user, durak_deck_36):
+    """Wave stays in ``build`` so the defender can beat while others still throw in."""
+    lobby = create_lobby(test_user, "parallel-wave", is_private=False)
+    join_lobby(lobby, second_user)
+    set_ready(lobby, test_user, True)
+    set_ready(lobby, second_user, True)
+    game = start_game(lobby, test_user)
+    rs = game.runtime_state or {}
+    assert rs.get("phase") == "between"
+    attacker = test_user if str(test_user.id) == rs.get("attacker_id") else second_user
+    hands = PlayerHand.objects.filter(game=game, player=attacker).select_related("card__rank")
+    by_rank_value = {}
+    for ph in hands:
+        by_rank_value.setdefault(ph.card.rank.value, []).append(ph.card.id)
+    chosen = max(by_rank_value, key=lambda v: len(by_rank_value[v]))
+    card_ids = by_rank_value[chosen]
+    play_attack(game, attacker, card_ids)
+    game.refresh_from_db()
+    assert (game.runtime_state or {}).get("phase") == PHASE_BUILD
+
+
+@pytest.mark.django_db
+def test_table_attack_ranks_includes_defensive_card(durak_deck_36, test_user):
+    """Podkidnoy: ranks on covered cards (defense) count for matching throw-ins."""
+    lobby = Lobby.objects.create(owner=test_user, name="throw-ranks", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=4, card_count=36)
+    trump = Card.objects.filter(special_card__isnull=True).first()
+    game = Game.objects.create(lobby=lobby, trump_card=trump, status="in_progress", runtime_state={})
+    eight = Card.objects.filter(rank__value=8, special_card__isnull=True).first()
+    q_cover = Card.objects.filter(rank__value=12, special_card__isnull=True).first()
+    TableCard.objects.create(game=game, attack_card=eight, defense_card=q_cover)
+    allowed = _table_attack_ranks(game)
+    assert 8 in allowed
+    assert 12 in allowed
+
+
+@pytest.mark.django_db
+def test_third_player_may_throw_rank_seen_only_on_defense(durak_deck_36, user_factory):
+    """Third player can throw a queen when the only queen on table is the defender's card."""
+    a = user_factory(username="pod_a")
+    b = user_factory(username="pod_b")
+    c = user_factory(username="pod_c")
+    lobby = Lobby.objects.create(owner=a, name="podkidnut", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=4, card_count=36)
+    trump = Card.objects.filter(special_card__isnull=True).first()
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=trump,
+        status="in_progress",
+        runtime_state={
+            "phase": PHASE_BUILD,
+            "attacker_id": str(a.id),
+            "defender_id": str(b.id),
+        },
+    )
+    for seat, u in enumerate((a, b, c), start=1):
+        GamePlayer.objects.create(game=game, user=u, seat_position=seat, cards_remaining=0)
+    eight = Card.objects.filter(rank__value=8, special_card__isnull=True).first()
+    queens = list(Card.objects.filter(rank__value=12, special_card__isnull=True)[:2])
+    q_cover, q_hand = queens[0], queens[1]
+    blocked = {eight.id, q_cover.id, q_hand.id}
+    filler = list(Card.objects.filter(special_card__isnull=True).exclude(id__in=blocked)[:6])
+    for i, card in enumerate(filler):
+        PlayerHand.objects.create(game=game, player=b, card=card, order_in_hand=i + 1)
+    GamePlayer.objects.filter(game=game, user=b).update(cards_remaining=len(filler))
+    TableCard.objects.create(game=game, attack_card=eight, defense_card=q_cover)
+    PlayerHand.objects.create(game=game, player=c, card=q_hand, order_in_hand=1)
+    GamePlayer.objects.filter(game=game, user=c).update(cards_remaining=1)
+
+    play_attack(game, c, [q_hand.id])
+    assert TableCard.objects.filter(game=game).count() == 2
+
+
+@pytest.mark.django_db
+def test_throw_eight_when_two_tens_beaten_by_eight_and_queen(durak_deck_36, user_factory):
+    """Ranks from all defense cards count with multiple table rows (two attacks)."""
+    a = user_factory(username="mix_a")
+    b = user_factory(username="mix_b")
+    c = user_factory(username="mix_c")
+    lobby = Lobby.objects.create(owner=a, name="mix-throw", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=4, card_count=36)
+    trump = Card.objects.filter(special_card__isnull=True).first()
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=trump,
+        status="in_progress",
+        runtime_state={
+            "phase": PHASE_BUILD,
+            "attacker_id": str(a.id),
+            "defender_id": str(b.id),
+        },
+    )
+    for seat, u in enumerate((a, b, c), start=1):
+        GamePlayer.objects.create(game=game, user=u, seat_position=seat, cards_remaining=0)
+    tens = list(Card.objects.filter(rank__value=10, special_card__isnull=True)[:2])
+    eights = list(Card.objects.filter(rank__value=8, special_card__isnull=True)[:2])
+    queens = list(Card.objects.filter(rank__value=12, special_card__isnull=True)[:1])
+    blocked = {tens[0].id, tens[1].id, eights[0].id, eights[1].id, queens[0].id}
+    filler = list(Card.objects.filter(special_card__isnull=True).exclude(id__in=blocked)[:6])
+    for i, card in enumerate(filler):
+        PlayerHand.objects.create(game=game, player=b, card=card, order_in_hand=i + 1)
+    GamePlayer.objects.filter(game=game, user=b).update(cards_remaining=len(filler))
+    TableCard.objects.create(game=game, attack_card=tens[0], defense_card=eights[0])
+    TableCard.objects.create(game=game, attack_card=tens[1], defense_card=queens[0])
+    PlayerHand.objects.create(game=game, player=c, card=eights[1], order_in_hand=1)
+    GamePlayer.objects.filter(game=game, user=c).update(cards_remaining=1)
+
+    assert 8 in _table_attack_ranks(game)
+    play_attack(game, c, [eights[1].id])
+    assert TableCard.objects.filter(game=game).count() == 3

@@ -6,10 +6,11 @@ models. It also triggers WebSocket broadcasts via :mod:`game.realtime`.
 
 Typical flow:
     #. Players create or join a lobby, toggle ready, owner calls ``start_game``.
-    #. Attacker opens from ``between``, others may throw in during ``build``,
-       attacker ``seal_attack`` to lock the wave.
-    #. Defender uses ``defend`` on each row or ``take_table``; after full defense,
-       attacker ``bito`` to discard and rotate roles.
+    #. Attacker opens from ``between`` into ``build``. While the wave is on the table,
+       the defender may ``defend`` or ``take_table`` at any time; the attacker and
+       other players may still ``play_attack`` (throw-ins) in parallel—no separate
+       ``defend`` phase gate.
+    #. After the table is fully beaten, attacker ``bito`` discards and rotates roles.
 """
 
 from __future__ import annotations
@@ -265,9 +266,27 @@ def _clear_table_to_hand(game: Game, user: User):
 
 
 def _table_attack_ranks(game: Game) -> set[int]:
-    return set(
-        TableCard.objects.filter(game=game).values_list("attack_card__rank__value", flat=True)
+    """Ranks that may be used for throw-ins: any rank shown on the table (attack or defense).
+
+    Classic podkidnoy allows matching ranks from beaten pairs, not only the original attacks.
+
+    Resolves ranks via :class:`~game.models.Card` rows (not multi-hop ``values_list`` on
+    nullable defense FKs) so every card on the table contributes reliably.
+    """
+    pairs = TableCard.objects.filter(game=game).values_list(
+        "attack_card_id", "defense_card_id"
     )
+    card_ids: set[UUID] = set()
+    for attack_id, defense_id in pairs:
+        card_ids.add(attack_id)
+        if defense_id:
+            card_ids.add(defense_id)
+    if not card_ids:
+        return set()
+    return {
+        int(v)
+        for v in Card.objects.filter(id__in=card_ids).values_list("rank__value", flat=True)
+    }
 
 
 def _defender_hand_size(game: Game, defender_id: UUID) -> int:
@@ -700,7 +719,7 @@ def play_attack(game: Game, user: User, card_ids: list[UUID]):
         raise GameError("Game not active", "finished")
     rs = _rs(game)
     phase = rs.get("phase")
-    if phase not in (PHASE_BUILD, PHASE_BETWEEN):
+    if phase not in (PHASE_BUILD, PHASE_BETWEEN, PHASE_DEFEND):
         raise GameError("Cannot attack now", "phase")
 
     settings = game.lobby.settings
@@ -723,7 +742,7 @@ def play_attack(game: Game, user: User, card_ids: list[UUID]):
         if user.id == defender_id:
             raise GameError("Defender cannot attack", "turn")
         if user.id != attacker_id:
-            if phase != PHASE_BUILD:
+            if phase not in (PHASE_BUILD, PHASE_DEFEND):
                 raise GameError("Cannot throw in now", "phase")
             eligible = {attacker_id, defender_id}
             others = {p.user_id for p in _player_circle(game)} - eligible
@@ -737,8 +756,12 @@ def play_attack(game: Game, user: User, card_ids: list[UUID]):
         cards = _cards_in_hand(game, user, card_ids)
         allowed_ranks = _table_attack_ranks(game)
         for c in cards:
-            if c.rank.value not in allowed_ranks:
-                raise GameError("Card rank must match table", "cards")
+            if int(c.rank.value) not in allowed_ranks:
+                raise GameError(
+                    f"Card rank must match table (got {c.rank.name}={c.rank.value}; "
+                    f"allowed values: {sorted(allowed_ranks)})",
+                    "cards",
+                )
         max_cards = _defender_hand_size(game, defender_id)
         on_table = TableCard.objects.filter(game=game).count()
         if on_table + len(cards) > max_cards:
@@ -758,7 +781,11 @@ def play_attack(game: Game, user: User, card_ids: list[UUID]):
 
 def _cards_in_hand(game: Game, user: User, card_ids: Iterable[UUID]) -> list[Card]:
     ids = list(card_ids)
-    hands = list(PlayerHand.objects.filter(game=game, player=user, card_id__in=ids))
+    hands = list(
+        PlayerHand.objects.filter(game=game, player=user, card_id__in=ids).select_related(
+            "card__rank"
+        )
+    )
     if len(hands) != len(ids):
         raise GameError("Invalid hand cards", "cards")
     return [h.card for h in hands]
@@ -766,27 +793,19 @@ def _cards_in_hand(game: Game, user: User, card_ids: Iterable[UUID]) -> list[Car
 
 @transaction.atomic
 def seal_attack(game: Game, user: User):
-    """Close the attack wave so the defender must beat or take.
+    """Legacy no-op: defense can start during ``build`` without a separate seal step.
 
-    Args:
-        game: Active game in ``build`` with undefended rows.
-        user: Primary attacker.
-
-    Raises:
-        GameError: If caller is not the attacker or phase is wrong.
+    Kept for API compatibility.
     """
     if game.status != "in_progress":
         raise GameError("Game not active", "finished")
     rs = _rs(game)
     if UUID(rs["attacker_id"]) != user.id:
         raise GameError("Only attacker can seal", "turn")
-    if rs.get("phase") != PHASE_BUILD:
-        raise GameError("Not in build phase", "phase")
+    if rs.get("phase") not in (PHASE_BUILD, PHASE_DEFEND):
+        raise GameError("Not in attack wave", "phase")
     if not TableCard.objects.filter(game=game).exists():
         raise GameError("Nothing to seal", "state")
-    if _count_undefended(game) == 0:
-        raise GameError("Cannot seal after defense started", "state")
-    _save_rs(game, phase=PHASE_DEFEND)
     broadcast_game(game.id, "game_update", {})
 
 
@@ -795,7 +814,7 @@ def defend(game: Game, user: User, table_card_id: UUID, card_id: UUID):
     """Cover a single attack row with a legal defense card.
 
     Args:
-        game: Active game in ``defend`` phase.
+        game: Active game during the table wave (``build`` or legacy ``defend``).
         user: Defender.
         table_card_id: Row to beat.
         card_id: Card from defender's hand.
@@ -808,7 +827,7 @@ def defend(game: Game, user: User, table_card_id: UUID, card_id: UUID):
     rs = _rs(game)
     if UUID(rs["defender_id"]) != user.id:
         raise GameError("Only defender acts", "turn")
-    if rs.get("phase") != PHASE_DEFEND:
+    if rs.get("phase") not in (PHASE_BUILD, PHASE_DEFEND):
         raise GameError("Not defense phase", "phase")
     tc = TableCard.objects.select_related("attack_card").get(game=game, id=table_card_id)
     if tc.defense_card_id:
@@ -844,7 +863,7 @@ def take_table(game: Game, user: User):
     rs = _rs(game)
     if UUID(rs["defender_id"]) != user.id:
         raise GameError("Only defender may take", "turn")
-    if rs.get("phase") != PHASE_DEFEND:
+    if rs.get("phase") not in (PHASE_BUILD, PHASE_DEFEND):
         raise GameError("Not defense phase", "phase")
     if not TableCard.objects.filter(game=game).exists():
         raise GameError("Table empty", "state")
@@ -877,7 +896,7 @@ def bito(game: Game, user: User):
     rs = _rs(game)
     if UUID(rs["attacker_id"]) != user.id:
         raise GameError("Only attacker can call bito", "turn")
-    if rs.get("phase") != PHASE_DEFEND:
+    if rs.get("phase") not in (PHASE_BUILD, PHASE_DEFEND):
         raise GameError("Wrong phase", "phase")
     if not _all_defended(game):
         raise GameError("Not all cards defended", "state")

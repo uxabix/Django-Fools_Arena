@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% block body_class %}game-skin{% endblock %}
 {% block title %}Lobbies — Fools Arena{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{% static 'game/css/game.css' %}">
@@ -19,7 +20,7 @@
         Name
         <input name="name" required maxlength="100" placeholder="Room name" autocomplete="off" />
       </label>
-      <label class="game-form__full">
+      <label class="game-form__full game-form__check">
         <span><input type="checkbox" name="is_private" /> Private room</span>
       </label>
       <label>
@@ -38,10 +39,10 @@
           <option value="52">52 cards</option>
         </select>
       </label>
-      <label class="game-form__full">
+      <label class="game-form__full game-form__check">
         <span><input type="checkbox" name="neighbor_throw_only" /> Neighbor throw only</span>
       </label>
-      <label class="game-form__full">
+      <label class="game-form__full game-form__check">
         <span><input type="checkbox" name="is_transferable" /> Transferable</span>
       </label>
       <div class="game-form__full">
