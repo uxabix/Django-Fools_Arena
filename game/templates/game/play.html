@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Table — Fools Arena{% endblock %}
+{% block content %}
+<p><a id="back-lobby" href="#">← Lobby</a></p>
+<h2>Game</h2>
+<p id="phase"></p>
+<p id="trump"></p>
+<p id="deck"></p>
+<div id="table"></div>
+<h3>Your hand</h3>
+<div id="hand"></div>
+<p id="controls"></p>
+<p id="err" style="color:crimson"></p>
+<script>
+(function () {
+  const parts = location.pathname.split("/").filter(Boolean);
+  const gameId = parts[parts.length - 1];
+  const BASE = "/api/game/games/" + gameId + "/";
+  let state = null;
+  let selected = new Set();
+  let selectedTableCardId = null;
+  let profile = null;
+
+  function csrf() {
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+  async function api(method, url, body) {
+    const opts = { method, credentials: "same-origin", headers: {} };
+    if (body !== undefined) {
+      opts.headers["Content-Type"] = "application/json";
+      opts.headers["X-CSRFToken"] = csrf();
+      opts.body = JSON.stringify(body);
+    }
+    const r = await fetch(url, opts);
+    const t = await r.text();
+    let data;
+    try { data = t ? JSON.parse(t) : null; } catch (_) { data = t; }
+    if (!r.ok) throw new Error((data && data.detail) || r.statusText || String(r.status));
+    return data;
+  }
+  function render() {
+    if (!state) return;
+    document.getElementById("back-lobby").href = "/game/lobbies/" + state.lobby_id + "/";
+    const rt = state.runtime;
+    document.getElementById("phase").textContent =
+      "Phase: " + rt.phase + " | attacker: " + rt.attacker_id + " | defender: " + rt.defender_id;
+    document.getElementById("trump").textContent =
+      "Trump: " + (state.trump_card && (state.trump_card.rank + " of " + state.trump_card.suit));
+    document.getElementById("deck").textContent = "Deck: " + state.deck_remaining;
+    const uid = profile && profile.id;
+    const me = uid && state.players.find(function (p) { return p.user_id === uid; });
+    const handEl = document.getElementById("hand");
+    handEl.innerHTML = "";
+    selected.clear();
+    if (me && me.hand) {
+      me.hand.forEach(function (c) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = c.rank + " " + c.suit;
+        b.dataset.cid = c.id;
+        b.onclick = function () {
+          if (selected.has(c.id)) {
+            selected.delete(c.id);
+            b.style.outline = "";
+          } else {
+            selected.add(c.id);
+            b.style.outline = "2px solid blue";
+          }
+        };
+        handEl.appendChild(b);
+      });
+    }
+    const tbl = document.getElementById("table");
+    tbl.innerHTML = "";
+    selectedTableCardId = null;
+    state.table.forEach(function (row) {
+      const d = document.createElement("div");
+      d.textContent =
+        "Attack: " + row.attack.rank + " " + row.attack.suit +
+        " | Def: " + (row.defense ? row.defense.rank + " " + row.defense.suit : "—") +
+        " [id " + row.id + "]";
+      d.style.cursor = row.defense ? "default" : "pointer";
+      if (!row.defense) {
+        d.onclick = function () {
+          selectedTableCardId = row.id;
+          Array.prototype.forEach.call(tbl.children, function (x) { x.style.background = ""; });
+          d.style.background = "#ffd";
+        };
+      }
+      tbl.appendChild(d);
+    });
+    const ctr = document.getElementById("controls");
+    ctr.innerHTML = "";
+    const rtg = state.runtime;
+    const isAtt = rtg.attacker_id === uid;
+    const isDef = rtg.defender_id === uid;
+    function btn(label, fn) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.onclick = fn;
+      ctr.appendChild(b);
+    }
+    if (state.status === "finished") {
+      ctr.textContent = "Game over. Loser id: " + state.loser_id;
+      return;
+    }
+    if (rtg.phase === "between" || rtg.phase === "build") {
+      if (isAtt || (rtg.phase === "build" && !isDef)) {
+        btn("Play selected (attack / throw-in)", async function () {
+          document.getElementById("err").textContent = "";
+          try {
+            const ids = Array.from(selected);
+            state = await api("POST", BASE + "attack/", { card_ids: ids });
+            render();
+          } catch (e) {
+            document.getElementById("err").textContent = e.message;
+          }
+        });
+      }
+      if (isAtt && rtg.phase === "build") {
+        btn("Seal attack (defender must react)", async function () {
+          document.getElementById("err").textContent = "";
+          try {
+            state = await api("POST", BASE + "seal/", {});
+            render();
+          } catch (e) {
+            document.getElementById("err").textContent = e.message;
+          }
+        });
+      }
+    }
+    if (rtg.phase === "defend" && isDef) {
+      btn("Defend selected row with selected card", async function () {
+        document.getElementById("err").textContent = "";
+        const tid = selectedTableCardId;
+        const cid = Array.from(selected)[0];
+        if (!tid || !cid) {
+          document.getElementById("err").textContent = "Select one table row and one card.";
+          return;
+        }
+        try {
+          state = await api("POST", BASE + "defend/", {
+            table_card_id: tid,
+            card_id: cid
+          });
+          render();
+        } catch (e) {
+          document.getElementById("err").textContent = e.message;
+        }
+      });
+      btn("Take cards", async function () {
+        document.getElementById("err").textContent = "";
+        try {
+          state = await api("POST", BASE + "take/", {});
+          render();
+        } catch (e) {
+          document.getElementById("err").textContent = e.message;
+        }
+      });
+    }
+    if (rtg.phase === "defend" && isAtt) {
+      btn("Bito (discard beaten cards)", async function () {
+        document.getElementById("err").textContent = "";
+        try {
+          state = await api("POST", BASE + "bito/", {});
+          render();
+        } catch (e) {
+          document.getElementById("err").textContent = e.message;
+        }
+      });
+    }
+  }
+  async function refresh() {
+    try {
+      state = await api("GET", BASE);
+      render();
+    } catch (e) {
+      document.getElementById("err").textContent = e.message;
+    }
+  }
+  const wsProto = location.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(wsProto + "//" + location.host + "/ws/games/" + gameId + "/");
+  ws.onmessage = function () { refresh(); };
+  api("GET", "/api/accounts/profile/")
+    .then(function (p) { profile = p; })
+    .then(refresh)
+    .catch(function (e) {
+      document.getElementById("err").textContent = e.message;
+    });
+})();
+</script>
+{% endblock %}

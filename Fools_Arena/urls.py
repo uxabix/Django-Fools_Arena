@@ -26,10 +26,11 @@ urlpatterns = [
     path("admin/", admin.site.urls),
 # UI
     path('accounts/', include('accounts.urls')),
+    path("game/", include("game.urls")),
 
     # API
     path('api/accounts/', include('accounts.api_urls')),
-
+    path("api/game/", include("game.api_urls")),
 ]
 
 # Add static files

@@ -394,6 +394,8 @@ class Game(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     lobby = models.ForeignKey(Lobby, on_delete=models.CASCADE)
     trump_card = models.ForeignKey('Card', on_delete=models.PROTECT, related_name='as_trump')
+    # attacker_id, defender_id, phase: build | defend | between
+    runtime_state = models.JSONField(default=dict, blank=True)
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=15, choices=[('in_progress', 'In Progress'), ('finished', 'Finished')])
@@ -1178,6 +1180,15 @@ class DiscardPile(models.Model):
         """
         last_position = cls.objects.filter(game=game).count()
         discard_entries = []
+        for i, card in enumerate(cards):
+            discard_entries.append(
+                cls.objects.create(
+                    game=game,
+                    card=card,
+                    position=last_position + i + 1,
+                )
+            )
+        return discard_entries
 
 
 class Turn(models.Model):

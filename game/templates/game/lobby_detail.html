@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Lobby — Fools Arena{% endblock %}
+{% block content %}
+<section>
+  <p><a href="/game/">← All lobbies</a></p>
+  <h2 id="lobby-title">Lobby</h2>
+  <pre id="lobby-meta"></pre>
+  <ul id="players"></ul>
+  <p id="actions"></p>
+  <button type="button" id="btn-ready">Toggle ready</button>
+  <button type="button" id="btn-start" style="display:none">Start game</button>
+  <button type="button" id="btn-join">Join this lobby</button>
+  <p id="err" style="color:crimson"></p>
+</section>
+<section>
+  <h3>Lobby chat</h3>
+  <div id="chat-log" style="border:1px solid #ccc;max-height:200px;overflow:auto;padding:8px"></div>
+  <form id="chat-form">
+    <input name="content" maxlength="4000" style="width:70%" />
+    <button type="submit">Send</button>
+  </form>
+</section>
+<script>
+(function () {
+  const parts = location.pathname.split("/").filter(Boolean);
+  const lobbyId = parts[parts.length - 1];
+  const API = "/api/game/lobbies/" + lobbyId + "/";
+  let lastState = null;
+  let ready = false;
+  let profile = null;
+
+  function csrf() {
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+  async function api(method, url, body) {
+    const opts = { method, credentials: "same-origin", headers: {} };
+    if (body !== undefined) {
+      opts.headers["Content-Type"] = "application/json";
+      opts.headers["X-CSRFToken"] = csrf();
+      opts.body = JSON.stringify(body);
+    }
+    const r = await fetch(url, opts);
+    const t = await r.text();
+    let data;
+    try { data = t ? JSON.parse(t) : null; } catch (_) { data = t; }
+    if (!r.ok) throw new Error((data && data.detail) || r.statusText || String(r.status));
+    return data;
+  }
+  function render(L) {
+    lastState = L;
+    document.getElementById("lobby-title").textContent = L.name;
+    document.getElementById("lobby-meta").textContent = JSON.stringify(L.settings, null, 2);
+    const ul = document.getElementById("players");
+    ul.innerHTML = "";
+    const uid = profile && profile.id;
+    L.players.forEach(function (p) {
+      const li = document.createElement("li");
+      li.textContent = p.username + " — " + p.status;
+      ul.appendChild(li);
+      if (p.user_id === uid) ready = p.status === "ready";
+    });
+    const mine = uid && L.players.some(function (p) { return p.user_id === uid; });
+    document.getElementById("btn-join").style.display = mine ? "none" : "inline";
+    document.getElementById("btn-start").style.display =
+      (L.owner_id === uid && L.status === "waiting") ? "inline" : "none";
+    const ag = L.active_game_id;
+    const act = document.getElementById("actions");
+    act.innerHTML = "";
+    if (ag) {
+      const a = document.createElement("a");
+      a.href = "/game/play/" + ag + "/";
+      a.textContent = "Enter active game";
+      act.appendChild(a);
+    }
+  }
+  async function refresh() {
+    try {
+      const L = await api("GET", API);
+      render(L);
+    } catch (e) {
+      document.getElementById("err").textContent = e.message;
+    }
+  }
+  async function loadChat() {
+    const rows = await api("GET", API + "messages/");
+    const log = document.getElementById("chat-log");
+    log.innerHTML = "";
+    rows.forEach(function (m) {
+      const d = document.createElement("div");
+      d.textContent = m.username + ": " + m.content;
+      log.appendChild(d);
+    });
+    log.scrollTop = log.scrollHeight;
+  }
+  document.getElementById("btn-join").addEventListener("click", async function () {
+    document.getElementById("err").textContent = "";
+    try {
+      await api("POST", API + "join/", {});
+      await refresh();
+    } catch (e) {
+      document.getElementById("err").textContent = e.message;
+    }
+  });
+  document.getElementById("btn-ready").addEventListener("click", async function () {
+    document.getElementById("err").textContent = "";
+    try {
+      const L = await api("POST", API + "ready/", { ready: !ready });
+      render(L);
+    } catch (e) {
+      document.getElementById("err").textContent = e.message;
+    }
+  });
+  document.getElementById("btn-start").addEventListener("click", async function () {
+    document.getElementById("err").textContent = "";
+    try {
+      const G = await api("POST", API + "start/", {});
+      location.href = "/game/play/" + G.id + "/";
+    } catch (e) {
+      document.getElementById("err").textContent = e.message;
+    }
+  });
+  document.getElementById("chat-form").addEventListener("submit", async function (ev) {
+    ev.preventDefault();
+    const inp = ev.target.content;
+    const content = inp.value.trim();
+    if (!content) return;
+    try {
+      await api("POST", API + "messages/", { content: content });
+      inp.value = "";
+      await loadChat();
+    } catch (e) {
+      document.getElementById("err").textContent = e.message;
+    }
+  });
+  const wsProto = location.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(wsProto + "//" + location.host + "/ws/lobbies/" + lobbyId + "/");
+  ws.onmessage = function () {
+    refresh();
+    loadChat().catch(function () {});
+  };
+  api("GET", "/api/accounts/profile/")
+    .then(function (p) { profile = p; })
+    .then(function () { return refresh(); })
+    .then(loadChat)
+    .catch(function (e) {
+      document.getElementById("err").textContent = e.message;
+    });
+})();
+</script>
+{% endblock %}
