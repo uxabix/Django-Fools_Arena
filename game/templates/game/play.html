@@ -1,16 +1,28 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Table — Fools Arena{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'game/css/game.css' %}">
+{% endblock %}
 {% block content %}
-<p><a id="back-lobby" href="#">← Lobby</a></p>
-<h2>Game</h2>
-<p id="phase"></p>
-<p id="trump"></p>
-<p id="deck"></p>
-<div id="table"></div>
-<h3>Your hand</h3>
-<div id="hand"></div>
-<p id="controls"></p>
-<p id="err" style="color:crimson"></p>
+<div class="game-page play-page">
+  <a id="back-lobby" class="game-back" href="#">← Lobby</a>
+  <h2 class="game-title">Table</h2>
+
+  <div class="game-hud">
+    <p id="phase"></p>
+    <p id="trump"></p>
+    <p id="deck"></p>
+  </div>
+
+  <div id="table" class="game-table-area" aria-label="Cards on table"></div>
+
+  <h3 class="game-subtitle">Your hand</h3>
+  <div id="hand" class="game-hand"></div>
+
+  <div id="controls" class="game-controls"></div>
+  <p id="err" class="text-error" aria-live="polite"></p>
+</div>
 <script>
 (function () {
   const parts = location.pathname.split("/").filter(Boolean);
@@ -45,11 +57,13 @@
     const rt = state.runtime;
     document.getElementById("phase").textContent =
       "Phase: " + rt.phase + " | attacker: " + rt.attacker_id + " | defender: " + rt.defender_id;
-    document.getElementById("trump").textContent =
-      "Trump: " + (state.trump_card && (state.trump_card.rank + " of " + state.trump_card.suit));
+    var tc = state.trump_card;
+    document.getElementById("trump").textContent = tc
+      ? ("Trump: " + tc.rank + " of " + tc.suit + " — " + tc.suit + " is trump")
+      : "";
     document.getElementById("deck").textContent = "Deck: " + state.deck_remaining;
-    const uid = profile && profile.id;
-    const me = uid && state.players.find(function (p) { return p.user_id === uid; });
+    var uid = profile && profile.id != null ? String(profile.id) : "";
+    var me = uid && state.players.find(function (p) { return String(p.user_id) === uid; });
     const handEl = document.getElementById("hand");
     handEl.innerHTML = "";
     selected.clear();
@@ -57,15 +71,16 @@
       me.hand.forEach(function (c) {
         const b = document.createElement("button");
         b.type = "button";
+        b.className = "game-card-btn" + (tc && c.suit === tc.suit ? " game-card-btn--trump" : "");
         b.textContent = c.rank + " " + c.suit;
         b.dataset.cid = c.id;
         b.onclick = function () {
           if (selected.has(c.id)) {
             selected.delete(c.id);
-            b.style.outline = "";
+            b.classList.remove("is-selected");
           } else {
             selected.add(c.id);
-            b.style.outline = "2px solid blue";
+            b.classList.add("is-selected");
           }
         };
         handEl.appendChild(b);
@@ -76,34 +91,39 @@
     selectedTableCardId = null;
     state.table.forEach(function (row) {
       const d = document.createElement("div");
+      d.className = "game-table-row" + (row.defense ? "" : " game-table-row--selectable");
       d.textContent =
         "Attack: " + row.attack.rank + " " + row.attack.suit +
         " | Def: " + (row.defense ? row.defense.rank + " " + row.defense.suit : "—") +
         " [id " + row.id + "]";
-      d.style.cursor = row.defense ? "default" : "pointer";
       if (!row.defense) {
         d.onclick = function () {
           selectedTableCardId = row.id;
-          Array.prototype.forEach.call(tbl.children, function (x) { x.style.background = ""; });
-          d.style.background = "#ffd";
+          Array.prototype.forEach.call(tbl.querySelectorAll(".game-table-row"), function (x) {
+            x.classList.remove("is-selected");
+          });
+          d.classList.add("is-selected");
         };
       }
       tbl.appendChild(d);
     });
     const ctr = document.getElementById("controls");
     ctr.innerHTML = "";
+    ctr.className = "game-controls";
     const rtg = state.runtime;
-    const isAtt = rtg.attacker_id === uid;
-    const isDef = rtg.defender_id === uid;
-    function btn(label, fn) {
+    var isAtt = rtg.attacker_id != null && String(rtg.attacker_id) === uid;
+    var isDef = rtg.defender_id != null && String(rtg.defender_id) === uid;
+    function btn(label, fn, primary) {
       const b = document.createElement("button");
       b.type = "button";
+      b.className = "game-btn " + (primary ? "game-btn--primary" : "game-btn--secondary");
       b.textContent = label;
       b.onclick = fn;
       ctr.appendChild(b);
     }
     if (state.status === "finished") {
       ctr.textContent = "Game over. Loser id: " + state.loser_id;
+      ctr.classList.add("game-controls--finished");
       return;
     }
     if (rtg.phase === "between" || rtg.phase === "build") {
@@ -117,7 +137,7 @@
           } catch (e) {
             document.getElementById("err").textContent = e.message;
           }
-        });
+        }, true);
       }
       if (isAtt && rtg.phase === "build") {
         btn("Seal attack (defender must react)", async function () {
@@ -128,7 +148,7 @@
           } catch (e) {
             document.getElementById("err").textContent = e.message;
           }
-        });
+        }, false);
       }
     }
     if (rtg.phase === "defend" && isDef) {
@@ -149,7 +169,7 @@
         } catch (e) {
           document.getElementById("err").textContent = e.message;
         }
-      });
+      }, true);
       btn("Take cards", async function () {
         document.getElementById("err").textContent = "";
         try {
@@ -158,7 +178,7 @@
         } catch (e) {
           document.getElementById("err").textContent = e.message;
         }
-      });
+      }, false);
     }
     if (rtg.phase === "defend" && isAtt) {
       btn("Bito (discard beaten cards)", async function () {
@@ -169,7 +189,7 @@
         } catch (e) {
           document.getElementById("err").textContent = e.message;
         }
-      });
+      }, true);
     }
   }
   async function refresh() {
@@ -183,7 +203,7 @@
   const wsProto = location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(wsProto + "//" + location.host + "/ws/games/" + gameId + "/");
   ws.onmessage = function () { refresh(); };
-  api("GET", "/api/accounts/profile/")
+  api("GET", "/api/accounts/auth/profile/")
     .then(function (p) { profile = p; })
     .then(refresh)
     .catch(function (e) {

@@ -1,31 +1,56 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Lobbies — Fools Arena{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'game/css/game.css' %}">
+{% endblock %}
 {% block content %}
-<section>
-  <h2>Open lobbies</h2>
-  <p id="lobby-status">Loading…</p>
-  <ul id="lobby-list"></ul>
-</section>
-<section>
-  <h3>Create lobby</h3>
-  <form id="create-form">
-    <label>Name <input name="name" required maxlength="100" /></label>
-    <label><input type="checkbox" name="is_private" /> Private</label>
-    <label>Password <input name="password" type="password" autocomplete="new-password" /></label>
-    <label>Max players <input name="max_players" type="number" min="2" max="8" value="4" /></label>
-    <label>Deck
-      <select name="card_count">
-        <option value="24">24</option>
-        <option value="36" selected>36</option>
-        <option value="52">52</option>
-      </select>
-    </label>
-    <label><input type="checkbox" name="neighbor_throw_only" /> Neighbor throw only</label>
-    <label><input type="checkbox" name="is_transferable" /> Transferable</label>
-    <button type="submit">Create</button>
-  </form>
-  <p id="create-error" style="color:crimson"></p>
-</section>
+<div class="game-page lobby-list-page">
+  <section class="game-panel">
+    <h2 class="game-title">Open lobbies</h2>
+    <p id="lobby-status" class="game-status game-status--loading">Loading…</p>
+    <ul id="lobby-list" class="game-lobby-list" aria-label="Public lobbies"></ul>
+  </section>
+
+  <section class="game-panel">
+    <h3 class="game-subtitle">Create lobby</h3>
+    <form id="create-form" class="game-form">
+      <label class="game-form__full">
+        Name
+        <input name="name" required maxlength="100" placeholder="Room name" autocomplete="off" />
+      </label>
+      <label class="game-form__full">
+        <span><input type="checkbox" name="is_private" /> Private room</span>
+      </label>
+      <label>
+        Password
+        <input name="password" type="password" autocomplete="new-password" placeholder="If private" />
+      </label>
+      <label>
+        Max players
+        <input name="max_players" type="number" min="2" max="8" value="4" />
+      </label>
+      <label>
+        Deck size
+        <select name="card_count">
+          <option value="24">24 cards</option>
+          <option value="36" selected>36 cards</option>
+          <option value="52">52 cards</option>
+        </select>
+      </label>
+      <label class="game-form__full">
+        <span><input type="checkbox" name="neighbor_throw_only" /> Neighbor throw only</span>
+      </label>
+      <label class="game-form__full">
+        <span><input type="checkbox" name="is_transferable" /> Transferable</span>
+      </label>
+      <div class="game-form__full">
+        <button type="submit" class="game-btn game-btn--primary">Create lobby</button>
+      </div>
+    </form>
+    <p id="create-error" class="text-error" aria-live="polite"></p>
+  </section>
+</div>
 <script>
 (function () {
   const API = "/api/game/lobbies/";
@@ -58,14 +83,18 @@
       li.appendChild(a);
       ul.appendChild(li);
     });
-    document.getElementById("lobby-status").textContent = rows.length ? "" : "No public lobbies.";
+    const st = document.getElementById("lobby-status");
+    st.textContent = rows.length ? "" : "No public lobbies.";
+    st.classList.toggle("game-status--loading", false);
   }
   async function refresh() {
     try {
       const rows = await api("GET", API);
       renderList(rows);
     } catch (e) {
-      document.getElementById("lobby-status").textContent = "Could not load lobbies: " + e.message;
+      const st = document.getElementById("lobby-status");
+      st.textContent = "Could not load lobbies: " + e.message;
+      st.classList.remove("game-status--loading");
     }
   }
   document.getElementById("create-form").addEventListener("submit", async function (ev) {

@@ -3,7 +3,7 @@
 import pytest
 from django.contrib.auth import get_user_model
 
-from game.models import Game, Lobby, LobbyPlayer
+from game.models import Card, CardRank, CardSuit, GameDeck, Lobby, LobbyPlayer, PlayerHand
 from game.services import GameError, create_lobby, join_lobby, set_ready, start_game
 
 User = get_user_model()
@@ -58,6 +58,39 @@ class TestLobbyServices:
         assert "attacker_id" in (game.runtime_state or {})
         lobby.refresh_from_db()
         assert lobby.status == "playing"
+
+    def test_start_game_dedupes_duplicate_suit_rank_rows(self, test_user, second_user, durak_deck_36):
+        """Duplicate ``Card`` rows for the same suit+rank must not appear in one shoe."""
+        hearts = CardSuit.objects.get(name="Hearts")
+        ace = CardRank.objects.get(value=14)
+        Card.objects.create(suit=hearts, rank=ace)
+        lobby = create_lobby(test_user, "G-dedupe", is_private=False)
+        join_lobby(lobby, second_user)
+        set_ready(lobby, test_user, True)
+        set_ready(lobby, second_user, True)
+        game = start_game(lobby, test_user)
+        hand_ids = list(PlayerHand.objects.filter(game=game).values_list("card_id", flat=True))
+        assert len(hand_ids) == len(set(hand_ids))
+        suit_rank = {
+            (ph.card.suit_id, ph.card.rank_id)
+            for ph in PlayerHand.objects.filter(game=game).select_related("card")
+        }
+        assert len(suit_rank) == len(hand_ids)
+        trump_id = game.trump_card_id
+        assert trump_id not in hand_ids
+        assert not GameDeck.objects.filter(game=game, card_id=trump_id).exists()
+
+    def test_start_game_auto_seeds_cards_when_missing(self, test_user, second_user, durak_deck_36):
+        """If normal playing cards were removed, ``start_game`` repopulates the catalog."""
+        lobby = create_lobby(test_user, "G-autoseed", is_private=False)
+        join_lobby(lobby, second_user)
+        set_ready(lobby, test_user, True)
+        set_ready(lobby, second_user, True)
+        Card.objects.filter(special_card__isnull=True).delete()
+        assert Card.objects.filter(special_card__isnull=True).count() == 0
+        game = start_game(lobby, test_user)
+        assert game.status == "in_progress"
+        assert Card.objects.filter(special_card__isnull=True).count() >= 36
 
 
 @pytest.mark.django_db

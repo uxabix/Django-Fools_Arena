@@ -1,16 +1,19 @@
 """REST API for lobbies, gameplay, and lobby chat.
 
-All gameplay and lobby mutations delegate to :mod:`game.services`. Lobby chat
-persists :class:`chat.models.Message` rows and mirrors new messages over the
-lobby WebSocket group.
+Gameplay delegates to :mod:`game.services`. Lobby-scoped lines use the shared
+:class:`chat.models.Chat` (``is_lobby=True``, FK to :class:`game.models.Lobby`)
+and :class:`chat.models.Message`; HTTP echoes are also pushed on the lobby
+WebSocket group for the game UI.
 """
 
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from chat.models import Message
+from chat.services import assert_can_send_message, get_lobby_chat
 from game.models import Game, Lobby, LobbyPlayer
 from game.realtime import broadcast_lobby
 from game.serializers import (
@@ -61,6 +64,10 @@ class LobbyListCreateAPI(APIView):
     def get(self, request):
         qs = (
             Lobby.objects.filter(status="waiting", is_private=False)
+            .annotate(
+                active_n=Count("players", filter=~Q(players__status="left")),
+            )
+            .filter(active_n__gt=0)
             .select_related("settings", "owner")
             .order_by("-created_at")
         )
@@ -133,10 +140,16 @@ class LobbyLeaveAPI(APIView):
     def post(self, request, lobby_id):
         lobby = get_object_or_404(Lobby, id=lobby_id)
         try:
-            leave_lobby(lobby, request.user)
+            info = leave_lobby(lobby, request.user)
         except GameError as e:
             return _err(e)
-        return Response({"detail": "left"})
+        return Response(
+            {
+                "detail": "left",
+                "lobby_closed": info["lobby_closed"],
+                "new_owner_id": info.get("new_owner_id"),
+            }
+        )
 
 
 class LobbyReadyAPI(APIView):
@@ -278,7 +291,8 @@ class LobbyMessagesAPI(APIView):
         lobby = get_object_or_404(Lobby, id=lobby_id)
         if not lobby.players.filter(user=request.user).exclude(status="left").exists():
             return Response(status=status.HTTP_403_FORBIDDEN)
-        msgs = list(Message.get_lobby_messages(lobby, limit=100))
+        chat = get_lobby_chat(lobby)
+        msgs = list(Message.objects.filter(chat=chat).order_by("-sent_at")[:100])
         msgs.reverse()
         return Response(
             [
@@ -299,9 +313,14 @@ class LobbyMessagesAPI(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
         ser = LobbyMessageSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
+        chat = get_lobby_chat(lobby)
+        try:
+            assert_can_send_message(chat, request.user)
+        except PermissionError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN)
         m = Message.objects.create(
             sender=request.user,
-            lobby=lobby,
+            chat=chat,
             content=ser.validated_data["content"],
         )
         broadcast_lobby(

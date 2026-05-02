@@ -3,6 +3,7 @@ import json
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 
 from .models import Chat, ChatParticipant, Message
 from .services import assert_can_send_message
@@ -15,6 +16,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.user = self.scope["user"]
         self.chat_id = self.scope["url_route"]["kwargs"]["chat_id"]
+
+        if isinstance(self.user, AnonymousUser):
+            await self.close(code=4401)
+            return
 
         # Check if user has access to the chat
         if not await self.user_can_access_chat():

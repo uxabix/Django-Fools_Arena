@@ -38,6 +38,8 @@ from game.models import (
     TableCard,
     Turn,
 )
+from chat.services import get_lobby_chat, remove_user_from_lobby_chat
+from game.card_catalog import ensure_playing_cards_for_deck_size
 from game.realtime import broadcast_game, broadcast_lobby
 
 User = get_user_model()
@@ -115,9 +117,32 @@ def _neighbor_user_ids(game: Game, defender_id: UUID) -> set[UUID]:
     }
 
 
-def _deck_cards_query(settings: LobbySettings):
+_SHOE_CARD_COUNT = {24: 24, 36: 36, 52: 52}
+
+
+def _deck_card_ids_for_shoe(settings: LobbySettings) -> list[UUID]:
+    """Return exactly one card PK per (suit, rank) for the configured shoe.
+
+    Duplicate ``Card`` rows for the same suit and rank are possible in the
+    database because ``unique_together`` treats multiple ``NULL``
+    ``special_card`` values as distinct. A physical deck must contain each
+    suit/rank combination at most once; the row with the smallest id wins
+    (stable ordering). Done in Python because ``MIN(uuid)`` is not valid SQL
+    on PostgreSQL.
+    """
     values = rank_values_for_deck(settings.card_count)
-    return Card.objects.filter(special_card__isnull=True, rank__value__in=values)
+    qs = Card.objects.filter(special_card__isnull=True, rank__value__in=values).order_by(
+        "suit_id", "rank_id", "id"
+    )
+    seen: set[tuple[int, int]] = set()
+    out: list[UUID] = []
+    for card in qs:
+        key = (card.suit_id, card.rank_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(card.id)
+    return out
 
 
 def _pick_first_attacker(game: Game, trump_suit_id) -> UUID:
@@ -258,6 +283,22 @@ def _all_defended(game: Game) -> bool:
     return qs.exists() and not qs.filter(defense_card__isnull=True).exists()
 
 
+def leave_other_active_lobbies(user: User, *, except_lobby: Lobby | None = None):
+    """Leave every active lobby membership except ``except_lobby`` (if given).
+
+    Ensures a user is only seated in one waiting/playing lobby at a time.
+
+    Args:
+        user: Player to detach from extra rooms.
+        except_lobby: Lobby id to skip (e.g. the room being joined).
+    """
+    qs = LobbyPlayer.objects.filter(user=user).exclude(status="left")
+    if except_lobby is not None:
+        qs = qs.exclude(lobby_id=except_lobby.id)
+    for lp in list(qs):
+        leave_lobby(lp.lobby, user)
+
+
 @transaction.atomic
 def create_lobby(
     owner: User,
@@ -289,6 +330,7 @@ def create_lobby(
     Returns:
         The newly created :class:`~game.models.Lobby` instance.
     """
+    leave_other_active_lobbies(owner, except_lobby=None)
     lobby = Lobby.objects.create(
         owner=owner,
         name=name,
@@ -306,6 +348,7 @@ def create_lobby(
         turn_time_limit=turn_time_limit,
     )
     LobbyPlayer.objects.create(lobby=lobby, user=owner, status="waiting")
+    get_lobby_chat(lobby)
     broadcast_lobby(lobby.id, "lobby_created", {"lobby_id": str(lobby.id)})
     return lobby
 
@@ -327,6 +370,7 @@ def join_lobby(lobby: Lobby, user: User, password: str | None = None) -> LobbyPl
     """
     if lobby.status == "closed":
         raise GameError("Lobby is closed", "closed")
+    leave_other_active_lobbies(user, except_lobby=lobby)
     if lobby.is_full():
         raise GameError("Lobby is full", "full")
     if lobby.is_private:
@@ -340,17 +384,24 @@ def join_lobby(lobby: Lobby, user: User, password: str | None = None) -> LobbyPl
         lp.save(update_fields=["status"])
     else:
         lp = LobbyPlayer.objects.create(lobby=lobby, user=user, status="waiting")
+    get_lobby_chat(lobby)
     broadcast_lobby(lobby.id, "player_joined", {"user_id": str(user.id)})
     return lp
 
 
 @transaction.atomic
-def leave_lobby(lobby: Lobby, user: User):
+def leave_lobby(lobby: Lobby, user: User) -> dict:
     """Mark every active membership of ``user`` in ``lobby`` as left.
+
+    If nobody remains, the lobby is closed. If the owner leaves but others stay,
+    ownership moves to another member (alphabetically by username).
 
     Args:
         lobby: Lobby to exit.
         user: Leaving user.
+
+    Returns:
+        Dict with ``lobby_closed`` (bool) and ``new_owner_id`` (optional str).
 
     Raises:
         GameError: If the user had no active membership.
@@ -358,9 +409,27 @@ def leave_lobby(lobby: Lobby, user: User):
     qs = LobbyPlayer.objects.filter(lobby=lobby, user=user).exclude(status="left")
     if not qs.exists():
         raise GameError("Not in lobby", "not_found")
+    was_owner = lobby.owner_id == user.id
     for lp in qs:
         lp.leave_lobby()
+    remove_user_from_lobby_chat(lobby, user)
+
+    lobby_closed = False
+    new_owner_id: str | None = None
+    remaining = LobbyPlayer.objects.filter(lobby=lobby).exclude(status="left")
+    if not remaining.exists():
+        if lobby.status != "closed":
+            lobby.status = "closed"
+            lobby.save(update_fields=["status"])
+        lobby_closed = True
+    elif was_owner:
+        next_lp = remaining.order_by("user__username").first()
+        lobby.owner = next_lp.user
+        lobby.save(update_fields=["owner"])
+        new_owner_id = str(next_lp.user_id)
+
     broadcast_lobby(lobby.id, "player_left", {"user_id": str(user.id)})
+    return {"lobby_closed": lobby_closed, "new_owner_id": new_owner_id}
 
 
 @transaction.atomic
@@ -419,10 +488,24 @@ def start_game(lobby: Lobby, user: User) -> Game:
         else:
             lp.leave_lobby()
 
-    deck_q = _deck_cards_query(settings)
-    card_ids = list(deck_q.values_list("id", flat=True))
+    if settings.card_count not in _SHOE_CARD_COUNT:
+        raise GameError("Unsupported card_count for this lobby", "config")
+    ensure_playing_cards_for_deck_size(settings.card_count)
+    card_ids = _deck_card_ids_for_shoe(settings)
+    expected = _SHOE_CARD_COUNT.get(settings.card_count)
+    if expected is not None and len(card_ids) != expected:
+        raise GameError(
+            f"Deck data mismatch after auto-seed: {len(card_ids)} unique suit/rank cards, "
+            f"need {expected} for a {settings.card_count}-card shoe",
+            "config",
+        )
     if len(card_ids) < 12:
         raise GameError("Not enough cards in database for this deck size", "config")
+    if len(card_ids) != len(set(card_ids)):
+        raise GameError(
+            "Deck build produced duplicate card ids; run: python manage.py init_game_data",
+            "config",
+        )
     secrets.SystemRandom().shuffle(card_ids)
     trump_id = card_ids[-1]
     rest = card_ids[:-1]
@@ -511,6 +594,9 @@ def serialize_lobby(lobby: Lobby) -> dict:
             for p in lobby.players.exclude(status="left").select_related("user")
         ],
         "active_game_id": _active_game_id(lobby),
+        "can_start": lobby.can_start_game(),
+        "ready_count": lobby.players.filter(status="ready").count(),
+        "active_player_count": lobby.players.exclude(status="left").count(),
     }
 
 
