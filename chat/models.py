@@ -11,12 +11,71 @@ Classes:
 """
 
 import uuid
-from django.db import models
-from django.utils import timezone
+
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import IntegrityError, models, transaction
+from django.utils import timezone
 
 User = get_user_model()
+
+
+class ChatManager(models.Manager):
+    """Custom manager with helpers for direct (1-on-1) chats."""
+
+    def get_or_create_direct(self, user_a, user_b):
+        """Return an existing or new direct message chat between two users.
+
+        ``dm_pair_key`` enforces at most one Chat row per unordered user pair.
+
+        Args:
+            user_a (User): First participant.
+            user_b (User): Second participant.
+
+        Returns:
+            tuple[Chat, bool]: The chat instance and True if it was created.
+
+        Raises:
+            ValueError: If both arguments refer to the same user.
+        """
+        if user_a.pk == user_b.pk:
+            raise ValueError("Cannot create a direct chat with the same user.")
+
+        key = dm_pair_key(user_a, user_b)
+        existing = self.filter(dm_pair_key=key).first()
+        if existing:
+            return existing, False
+
+        try:
+            with transaction.atomic():
+                chat = self.create(
+                    name="",
+                    is_group=False,
+                    is_lobby=False,
+                    is_global=False,
+                    dm_pair_key=key,
+                )
+                chat.add_participant(user_a)
+                chat.add_participant(user_b)
+                return chat, True
+        except IntegrityError:
+            recovered = self.filter(dm_pair_key=key).first()
+            if recovered:
+                return recovered, False
+            raise
+
+
+def dm_pair_key(user_a, user_b):
+    """Build a stable unique key for an unordered pair of users.
+
+    Args:
+        user_a (User): First user.
+        user_b (User): Second user.
+
+    Returns:
+        str: Two UUIDs in lexicographic order, separated by ``':'``.
+    """
+    a, b = sorted([str(user_a.pk), str(user_b.pk)])
+    return f"{a}:{b}"
 
 
 class Chat(models.Model):
@@ -35,9 +94,13 @@ class Chat(models.Model):
         description (str): Optional description.
         is_group (bool): Whether the chat supports multiple participants.
         is_lobby (bool): Whether the chat belongs to a game lobby.
+        is_global (bool): Whether this is a global/world channel (not lobby-bound).
         lobby (ForeignKey): Optional reference to a Lobby object.
+        dm_pair_key (str): For 1-on-1 chats only; stable key for the user pair.
         created_at (datetime): Timestamp of creation.
     """
+
+    objects = ChatManager()
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, blank=True)
@@ -45,6 +108,7 @@ class Chat(models.Model):
 
     is_group = models.BooleanField(default=False)
     is_lobby = models.BooleanField(default=False)
+    is_global = models.BooleanField(default=False)
 
     lobby = models.ForeignKey(
         "game.Lobby",
@@ -52,6 +116,14 @@ class Chat(models.Model):
         null=True,
         blank=True,
         related_name="chat"
+    )
+
+    dm_pair_key = models.CharField(
+        max_length=73,
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="Stable identifier for a 1-on-1 chat (two UUIDs, sorted).",
     )
 
     created_at = models.DateTimeField(default=timezone.now)
@@ -62,6 +134,7 @@ class Chat(models.Model):
         indexes = [
             models.Index(fields=["is_group", "created_at"]),
             models.Index(fields=["name"]),
+            models.Index(fields=["is_global", "created_at"]),
         ]
 
     def __str__(self):
@@ -129,6 +202,27 @@ class Chat(models.Model):
         return ChatParticipant.objects.filter(
             chat=self, role__in=["admin", "owner"]
         ).select_related("user")
+
+    def is_direct_message(self):
+        """Return True if this chat is a private 1-on-1 (not lobby/group/global)."""
+        return (
+            not self.is_group
+            and not self.is_lobby
+            and not self.is_global
+        )
+
+    def get_other_participant(self, user):
+        """Return the other user in a direct chat.
+
+        Args:
+            user (User): One of the two participants.
+
+        Returns:
+            User | None: The counterpart, or None if not applicable.
+        """
+        if not self.is_direct_message():
+            return None
+        return self.get_participants().exclude(pk=user.pk).first()
 
 
 class ChatParticipant(models.Model):
@@ -221,16 +315,20 @@ class Message(models.Model):
 
     def is_private(self):
         """Determine if this is a private 1-on-1 message."""
-        return not self.chat.is_group and not self.chat.is_lobby
+        return self.chat.is_direct_message()
 
     def get_chat_context(self):
         """Return structured information about the chat type.
 
         Returns:
-            dict: {type: 'private'|'group'|'lobby', name: str}
+            dict: ``type`` is one of ``private``, ``group``, ``lobby``, ``global``;
+            ``name`` is a short display label.
         """
         if self.chat.is_lobby:
             return {"type": "lobby", "name": self.chat.name or "Lobby"}
+
+        if self.chat.is_global:
+            return {"type": "global", "name": self.chat.name or "Global"}
 
         if self.chat.is_group:
             return {"type": "group", "name": self.chat.name or "Group Chat"}

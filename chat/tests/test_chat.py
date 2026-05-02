@@ -117,3 +117,22 @@ class TestChatParticipantModel:
         participant.demote()
         participant.refresh_from_db()
         assert participant.role == "owner"
+
+
+@pytest.mark.django_db
+class TestDirectChatManager:
+    """Tests for :meth:`Chat.objects.get_or_create_direct`."""
+
+    def test_creates_single_chat_per_pair(self, test_user, second_user):
+        """Two calls yield one chat row and ``dm_pair_key`` uniqueness."""
+        c1, created1 = Chat.objects.get_or_create_direct(test_user, second_user)
+        c2, created2 = Chat.objects.get_or_create_direct(second_user, test_user)
+        assert created1 is True
+        assert created2 is False
+        assert c1.pk == c2.pk
+        assert Chat.objects.filter(dm_pair_key=c1.dm_pair_key).count() == 1
+
+    def test_same_user_raises(self, test_user):
+        """Starting a DM with yourself raises ``ValueError``."""
+        with pytest.raises(ValueError):
+            Chat.objects.get_or_create_direct(test_user, test_user)

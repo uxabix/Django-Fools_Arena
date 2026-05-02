@@ -39,12 +39,35 @@ docker compose exec web python manage.py collectstatic
 ```
 
 ### 6. Work with Django
-All commands should be executed inside the web container. Examples:
+Run migrations, tests, and management commands **inside the `web` container** (after `docker compose up`):
+
 ```bash
-docker compose exec web python manage.py shell
+docker compose exec web python manage.py migrate
 docker compose exec web python manage.py makemigrations
-docker compose exec web pytest -v 
+docker compose exec web pytest -v
 ```
+
+If containers are not running yet, you can use a one-off container (starts dependencies per Compose file):
+
+```bash
+docker compose run --rm web python manage.py migrate
+docker compose run --rm web pytest -v
+```
+
+### Chat: API and templates
+REST (session or token auth as configured for DRF):
+
+- `GET /api/chat/chats/` — list chats for the current user  
+- `POST /api/chat/chats/direct/` — JSON body `{ "other_user_id": "<uuid>" }` to open or reuse a 1:1 chat  
+- `GET|POST /api/chat/chats/<chat_uuid>/messages/` — list recent messages or `{ "content": "..." }` to post  
+
+Same behaviour in server-rendered UI (login required):
+
+- `/chat/` — inbox  
+- `/chat/direct/new/` — start a direct chat by username  
+- `/chat/<chat_uuid>/` — history, HTTP post form, optional WebSocket client block on the page  
+
+Blocking uses `accounts.Block`: the blocked user cannot send **direct** messages to the blocker; lobby chats are unchanged.
 
 ### 7. Stop containers
 ```bash
