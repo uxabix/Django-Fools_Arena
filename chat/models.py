@@ -87,17 +87,6 @@ class Chat(models.Model):
     - automatically created lobby chats (is_lobby=True)
 
     Messages are always attached to a Chat, not directly to a Lobby or users.
-
-    Attributes:
-        id (UUID): Unique identifier for the chat.
-        name (str): Optional name (e.g. "Lobby #1").
-        description (str): Optional description.
-        is_group (bool): Whether the chat supports multiple participants.
-        is_lobby (bool): Whether the chat belongs to a game lobby.
-        is_global (bool): Whether this is a global/world channel (not lobby-bound).
-        lobby (ForeignKey): Optional reference to a Lobby object.
-        dm_pair_key (str): For 1-on-1 chats only; stable key for the user pair.
-        created_at (datetime): Timestamp of creation.
     """
 
     objects = ChatManager()
@@ -229,12 +218,6 @@ class ChatParticipant(models.Model):
     """Represents a user's membership in a chat with assigned permissions.
 
     Each user can belong to multiple chats and have different roles in each.
-
-    Attributes:
-        chat (Chat): The chat the user participates in.
-        user (User): The participating user.
-        role (str): Permission level ("owner", "admin", "member").
-        joined_at (datetime): When the user joined the chat.
     """
 
     ROLE_CHOICES = [
@@ -282,20 +265,12 @@ class ChatParticipant(models.Model):
             self.role = "member"
             self.save(update_fields=["role"])
 
-
 class Message(models.Model):
     """Represents a text message inside a chat.
 
-    Messages belong strictly to a Chat instance. Lobby messages and private
-    messages are simply different chat types — there are no separate fields
-    for lobby/receiver.
-
-    Attributes:
-        id (UUID): Unique message identifier.
-        sender (User): The user who sent the message.
-        chat (Chat): Chat to which the message belongs.
-        content (str): Text content.
-        sent_at (datetime): Timestamp of message creation.
+    Messages belong strictly to a ``Chat`` instance. Lobby and direct messages
+    differ by chat type only; there are no separate lobby or receiver fields
+    on this model.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

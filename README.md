@@ -75,6 +75,50 @@ docker compose down
 ```
 ---
 
+## Documentation
+
+Developer documentation is built with [Sphinx](https://www.sphinx-doc.org/) from the [`docs/`](docs/) directory (autodoc, Google-style docstrings via Napoleon, viewcode).
+
+**Install dependencies** (includes Sphinx):
+
+```bash
+pip install -r requirements.txt
+```
+
+**Generate HTML** (either command from the repository root):
+
+```bash
+cd docs && make html
+```
+
+```bash
+sphinx-build -b html docs docs/_build
+```
+
+Open `docs/_build/html/index.html` in a browser.
+
+**Rebuild after code or docstring changes** (clean output, then build again):
+
+```bash
+cd docs && make clean html
+```
+
+Or remove the build directory and run `sphinx-build` again:
+
+```bash
+rm -rf docs/_build && sphinx-build -b html docs docs/_build
+```
+
+**Using Docker** (from the project root, with the stack running and the app image built):
+
+```bash
+docker compose exec web sphinx-build -b html docs docs/_build
+```
+
+The `docs/_build/` directory is gitignored.
+
+---
+
 ## 🚀 Stack
 - Django, REST, Channels
 - Redis
