@@ -13,38 +13,11 @@ from django.db import models
 class User(AbstractUser):
     """Extended user model for the Durak card game application.
 
-    This model extends Django's ``AbstractUser`` to support additional
-    game-specific fields and convenience methods. A UUID is used as a
-    primary key to improve security, avoid predictable identifiers, and
-    support distributed systems.
-
-    Attributes:
-        id (UUIDField): Primary key using UUID4.
-        avatar_url (URLField): Optional URL to the user's avatar image.
-        created_at (DateTimeField): Timestamp of when the user account was created.
-
-    Inherited Attributes from ``AbstractUser``:
-        username, email, password, first_name, last_name,
-        is_active, is_staff, is_superuser,
-        date_joined, last_login
-
-    Reverse Relations:
-        sent_messages (QuerySet[Message]): Messages sent by the user.
-        received_messages (QuerySet[Message]): Private messages received by the user.
-        lobby_set (QuerySet[Lobby]): Lobbies created by the user.
-        lobbyplayer_set (QuerySet[LobbyPlayer]): Lobby participation records.
-        gameplayer_set (QuerySet[GamePlayer]): Game participation records.
-        playerhand_set (QuerySet[PlayerHand]): Cards owned by the user in a match.
-        turn_set (QuerySet[Turn]): Turns made by the user.
-
-    Example:
-        user = User.objects.create_user(
-            username="player1",
-            email="player1@example.com",
-            password="secure_password"
-        )
-        user.avatar_url = "https://example.com/avatar.jpg"
-        user.save()
+    Extends Django ``AbstractUser`` with game-specific fields and helpers.
+    Uses a UUID primary key. Inherits standard auth fields from ``AbstractUser``
+    (username, email, password, ``is_active``, ``is_staff``, etc.).
+    Reverse relations include lobby membership, game participation, messages,
+    hands, and turns.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -204,18 +177,7 @@ class Block(models.Model):
 
     A block prevents the ``blocked`` user from interacting with the
     ``blocker`` (e.g., sending messages, joining their lobby, sending invites).
-
-    Attributes:
-        blocker (ForeignKey[User]): The user who initiated the block.
-        blocked (ForeignKey[User]): The user who is being blocked.
-        created_at (DateTimeField): Timestamp of when the block was created.
-
-    Constraints:
-        - A user cannot block the same user more than once (unique_together).
-        - Indexed lookups for efficient permission checks.
-
-    Example:
-        Block.objects.create(blocker=user1, blocked=user2)
+    The pair ``(blocker, blocked)`` is unique and indexed for lookups.
     """
 
     blocker = models.ForeignKey(
