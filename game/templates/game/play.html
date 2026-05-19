@@ -1,10 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
-{% block body_class %}game-skin{% endblock %}
 {% block title %}Table — Durak — Fools Arena{% endblock %}
-{% block extra_head %}
-<link rel="stylesheet" href="{% static 'game/css/game.css' %}">
-{% endblock %}
 {% block content %}
 <div class="game-page play-page play-page--classic">
   <header class="play-classic-bar">
@@ -44,5 +40,5 @@
 
   <p id="err" class="text-error" aria-live="polite"></p>
 </div>
-<script src="{% static 'game/js/play_table.js' %}"></script>
+<script src="{% static 'game/js/play_table.js' %}?v={{ asset_js_v }}"></script>
 {% endblock %}

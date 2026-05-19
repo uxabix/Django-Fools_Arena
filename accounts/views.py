@@ -22,39 +22,29 @@ from .forms import RegistrationForm, LoginForm
 
 @csrf_protect
 def register_view(request):
-    """
-    Render and process the registration form.
-
-    If the request method is POST and the form is valid, a new user
-    is created and automatically logged in. On success, the user is
-    redirected to the profile page. Otherwise, the registration form
-    is re-rendered with validation errors.
-    """
+    """Render and process the registration form."""
+    if request.user.is_authenticated:
+        return redirect("game-lobby-list-page")
     if request.method == 'POST':
         form = RegistrationForm(request.POST)
         if form.is_valid():
             user = form.save()
             auth_login(request, user)
-            return redirect('profile')
+            return redirect('game-lobby-list-page')
     else:
         form = RegistrationForm()
     return render(request, 'accounts/registration.html', {'form': form})
 
 @csrf_protect
 def login_view(request):
-    """
-    Render and process the login form.
-
-    If the request method is POST and the form is valid, the user
-    is authenticated and logged in. On success, the user is redirected
-    to the profile page. Otherwise, the login form is re-rendered with
-    validation errors.
-    """
+    """Render and process the login form."""
+    if request.user.is_authenticated:
+        return redirect("game-lobby-list-page")
     if request.method == 'POST':
         form = LoginForm(request, data=request.POST)
         if form.is_valid():
             auth_login(request, form.get_user())
-            return redirect('profile')
+            return redirect('game-lobby-list-page')
     else:
         form = LoginForm()
     return render(request, 'accounts/login.html', {'form': form})

@@ -1,15 +1,22 @@
 {% extends "base.html" %}
 
-{% block title %}New direct chat · Fools Arena{% endblock %}
+{% block title %}New direct chat — Fools Arena{% endblock %}
 
 {% block content %}
-<h2>Open or continue a direct chat</h2>
-<p>Enter the other player's username (same account as used to log in).</p>
+<div class="game-page game-page--narrow">
+  <a class="game-back" href="{% url 'chat:inbox' %}">← Back to inbox</a>
 
-<form method="post" action="">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Open chat</button>
-</form>
-<p><a href="{% url 'chat:inbox' %}">Back to inbox</a></p>
+  <section class="game-panel">
+    <h1 class="game-title">Direct message</h1>
+    <p class="game-lead">Enter the other player's username (same as used to log in).</p>
+
+    <form method="post" class="game-form game-form--stacked" novalidate>
+      {% csrf_token %}
+      {% include "accounts/includes/form_fields.html" with form=form %}
+      <div class="game-form__full">
+        <button type="submit" class="game-btn game-btn--primary game-btn--block">Open chat</button>
+      </div>
+    </form>
+  </section>
+</div>
 {% endblock %}

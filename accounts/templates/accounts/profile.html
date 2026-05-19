@@ -1,13 +1,37 @@
 {% extends "base.html" %}
 
-{% block title %}Profile{% endblock %}
+{% block title %}Profile — Fools Arena{% endblock %}
 
 {% block content %}
-<h1>Profile</h1>
-<p>User name: {{ user.username }}</p>
-<p>Email: {{ user.email }}</p>
-<form method="post" action="{% url 'logout' %}">
-  {% csrf_token %}
-  <button type="submit">Exit</button>
-</form>
+<div class="game-page">
+  <section class="game-panel">
+    <h1 class="game-title">Your profile</h1>
+    <p class="game-lead">Signed in as <strong>{{ user.username }}</strong></p>
+
+    <dl class="profile-details">
+      <dt>Username</dt>
+      <dd>{{ user.username }}</dd>
+      <dt>Email</dt>
+      <dd>{{ user.email|default:"—" }}</dd>
+    </dl>
+
+    <div class="quick-links">
+      <a href="{% url 'game-lobby-list-page' %}" class="quick-link-card">
+        <span class="quick-link-card__icon" aria-hidden="true">🃏</span>
+        <span class="quick-link-card__label">Games &amp; lobbies</span>
+        <span class="quick-link-card__hint">Browse or create a table</span>
+      </a>
+      <a href="{% url 'chat:inbox' %}" class="quick-link-card">
+        <span class="quick-link-card__icon" aria-hidden="true">💬</span>
+        <span class="quick-link-card__label">Messages</span>
+        <span class="quick-link-card__hint">Direct chats with players</span>
+      </a>
+    </div>
+
+    <form method="post" action="{% url 'logout' %}" class="profile-logout">
+      {% csrf_token %}
+      <button type="submit" class="game-btn game-btn--secondary">Sign out</button>
+    </form>
+  </section>
+</div>
 {% endblock %}

@@ -1,0 +1,16 @@
+{% for field in form %}
+<label class="game-form__full{% if field.field.widget.input_type == 'checkbox' %} game-form__check{% endif %}">
+  {% if field.field.widget.input_type == 'checkbox' %}
+  <span>{{ field }} {{ field.label }}</span>
+  {% else %}
+  {{ field.label_tag }}
+  {{ field }}
+  {% endif %}
+  {% for error in field.errors %}
+  <span class="field-error" role="alert">{{ error }}</span>
+  {% endfor %}
+  {% if field.help_text %}
+  <span class="field-hint">{{ field.help_text|safe }}</span>
+  {% endif %}
+</label>
+{% endfor %}

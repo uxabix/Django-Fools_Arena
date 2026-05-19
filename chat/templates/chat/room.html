@@ -1,34 +1,42 @@
 {% extends "base.html" %}
 
-{% block title %}{{ title }} · Fools Arena{% endblock %}
+{% block title %}{{ title }} — Fools Arena{% endblock %}
 
 {% block content %}
-<h2>{{ title }}</h2>
-<p><a href="{% url 'chat:inbox' %}">← Inbox</a></p>
+<div class="game-page chat-room-page">
+  <a class="game-back" href="{% url 'chat:inbox' %}">← Back to inbox</a>
 
-<div id="chat-log" class="chat-log" aria-live="polite">
-    {% for m in messages_list %}
-    <div class="chat-msg"><strong>{{ m.sender.username }}</strong>:
+  <section class="game-panel">
+    <h1 class="game-title">{{ title }}</h1>
+
+    <div id="chat-log" class="game-chat-log game-chat-log--room" aria-live="polite">
+      {% for m in messages_list %}
+      <div class="game-chat-line">
+        <strong>{{ m.sender.username }}</strong>
         <span>{{ m.content }}</span>
-        <small>{{ m.sent_at|date:"Y-m-d H:i" }}</small>
+        <small class="game-chat-line__time">{{ m.sent_at|date:"Y-m-d H:i" }}</small>
+      </div>
+      {% empty %}
+      <p id="chat-empty-hint" class="game-status">No messages yet. Say hello!</p>
+      {% endfor %}
     </div>
-    {% empty %}
-    <p id="chat-empty-hint">No messages yet.</p>
-    {% endfor %}
+
+    <form method="post" action="" id="chat-http-form" class="game-chat-form">
+      {% csrf_token %}
+      {% include "accounts/includes/form_fields.html" with form=form %}
+      <button type="submit" class="game-btn game-btn--primary">Send</button>
+    </form>
+  </section>
+
+  <section class="game-panel game-panel--compact">
+    <h2 class="game-subtitle">Live updates</h2>
+    <p class="game-lead game-lead--compact">Optional WebSocket channel for instant delivery (same as API clients).</p>
+    <form id="chat-ws-form" class="game-chat-form">
+      <input id="chat-message-input" type="text" maxlength="10000" placeholder="WebSocket message…" autocomplete="off" aria-label="WebSocket message">
+      <button type="submit" class="game-btn game-btn--secondary">Send via WS</button>
+    </form>
+  </section>
 </div>
-
-<form method="post" action="" id="chat-http-form">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Send</button>
-</form>
-
-<h3>Live (WebSocket)</h3>
-<p>Optional: connect for live updates (same channel as the API-backed clients).</p>
-<form id="chat-ws-form">
-    <input id="chat-message-input" type="text" size="80" placeholder="WebSocket message…" autocomplete="off">
-    <button type="submit">Send via WS</button>
-</form>
 
 <script>
 (function () {
@@ -43,12 +51,13 @@
   function appendLine(sender, content, sentAt) {
     if (emptyHint) emptyHint.remove();
     const div = document.createElement('div');
-    div.className = 'chat-msg';
-    div.innerHTML = '<strong>' + sender + '</strong>: <span></span> <small></small>';
-    div.querySelector('span').textContent = content;
+    div.className = 'game-chat-line';
+    div.innerHTML = '<strong></strong> <span></span> <small class="game-chat-line__time"></small>';
+    div.querySelector('strong').textContent = sender + ':';
+    div.querySelector('span').textContent = ' ' + content;
     div.querySelector('small').textContent = sentAt || '';
     log.appendChild(div);
-    div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    log.scrollTop = log.scrollHeight;
   }
 
   chatSocket.onmessage = function(e) {

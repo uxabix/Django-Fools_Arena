@@ -1,15 +1,31 @@
 {% extends "base.html" %}
 
-{% block title %}Login{% endblock %}
+{% block title %}Login — Fools Arena{% endblock %}
 
 {% block content %}
-<h1>Login</h1>
-<form method="post">
-  {% csrf_token %}
-  {{ form.as_p }}
-  <button type="submit">Login</button>
-</form>
-    <p>
-    Don't have an account? <a href="{% url 'register' %}">Registration</a>
+<div class="game-page game-page--narrow">
+  <section class="game-panel game-panel--auth">
+    <h1 class="game-title">Welcome back</h1>
+    <p class="game-lead">Sign in to join lobbies and play Durak online.</p>
+
+    <form method="post" class="game-form game-form--stacked" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+      <div class="form-errors game-form__full" role="alert">
+        {% for error in form.non_field_errors %}
+        <p>{{ error }}</p>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% include "accounts/includes/form_fields.html" with form=form %}
+      <div class="game-form__full">
+        <button type="submit" class="game-btn game-btn--primary game-btn--block">Sign in</button>
+      </div>
+    </form>
+
+    <p class="game-footnote">
+      No account yet? <a href="{% url 'register' %}">Create one</a>
     </p>
+  </section>
+</div>
 {% endblock %}

@@ -30,6 +30,21 @@ class RegistrationForm(UserCreationForm):
         model = User
         fields = ('username', 'email', 'password1', 'password2')
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in self.fields:
+            field = self.fields[name]
+            if field.widget.input_type == "checkbox":
+                continue
+            field.widget.attrs.setdefault("class", "game-input")
+            if "password" in name:
+                field.widget.attrs["autocomplete"] = "new-password"
+            elif name == "username":
+                field.widget.attrs["autocomplete"] = "username"
+            elif name == "email":
+                field.widget.attrs["autocomplete"] = "email"
+
+
 class LoginForm(AuthenticationForm):
     """
     Form for user login.
@@ -38,4 +53,11 @@ class LoginForm(AuthenticationForm):
     additional fields. Used to authenticate existing users
     with their username and password.
     """
-    pass
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["username"].widget.attrs.update(
+            {"class": "game-input", "autocomplete": "username"}
+        )
+        self.fields["password"].widget.attrs.update(
+            {"class": "game-input", "autocomplete": "current-password"}
+        )

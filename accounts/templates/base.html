@@ -1,31 +1,54 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Fools Arena{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'game/css/game.css' %}?v={{ asset_css_v }}">
     {% block extra_head %}{% endblock %}
 </head>
-<body class="{% block body_class %}{% endblock %}">
-    <header>
-        <h1>Fools Arena</h1>
-        <nav>
-            <a href="{% url 'login' %}">Login</a> |
-            <a href="{% url 'register' %}">Register</a> |
-            <a href="{% url 'profile' %}">Profile</a> |
-            <a href="{% url 'game-lobby-list-page' %}">Games</a> |
-            <a href="{% url 'chat:inbox' %}">Chat</a>
-        </nav>
-    </header>
+<body class="game-skin{% block body_modifiers %}{% endblock %}">
+    <div class="site-shell">
+        <header class="site-header">
+            <a href="{% url 'home' %}" class="site-brand" aria-label="Fools Arena home">
+                <span class="site-brand__mark" aria-hidden="true">♠</span>
+                <span class="site-brand__text">Fools Arena</span>
+            </a>
+            <nav class="site-nav" aria-label="Main navigation">
+                <div class="site-nav__track">
+                    {% if user.is_authenticated %}
+                    <a href="{% url 'game-lobby-list-page' %}"
+                       class="site-nav__link{% if request.resolver_match.view_name|default:''|slice:':5' == 'game-' %} is-active{% endif %}">Games</a>
+                    <a href="{% url 'chat:inbox' %}"
+                       class="site-nav__link{% if request.resolver_match.namespace == 'chat' %} is-active{% endif %}">Chat</a>
+                    <a href="{% url 'profile' %}"
+                       class="site-nav__link{% if request.resolver_match.view_name == 'profile' %} is-active{% endif %}">Profile</a>
+                    {% else %}
+                    <a href="{% url 'login' %}"
+                       class="site-nav__link{% if request.resolver_match.view_name == 'login' %} is-active{% endif %}">Login</a>
+                    <a href="{% url 'register' %}"
+                       class="site-nav__link{% if request.resolver_match.view_name == 'register' %} is-active{% endif %}">Register</a>
+                    {% endif %}
+                </div>
+            </nav>
+        </header>
 
-    <main>
-        {% block content %}
-        <!-- Page-specific content will be injected here -->
-        {% endblock %}
-    </main>
+        {% if messages %}
+        <div class="site-messages" role="status" aria-live="polite">
+            {% for message in messages %}
+            <p class="site-message site-message--{{ message.tags|default:'info' }}">{{ message }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
 
-    <footer>
-        <p>&copy; 2026 Fools Arena</p>
-    </footer>
+        <main class="site-main">
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer class="site-footer">
+            <p>&copy; 2026 Fools Arena — online Durak</p>
+        </footer>
+    </div>
 </body>
 </html>

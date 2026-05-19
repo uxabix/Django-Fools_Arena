@@ -1,13 +1,8 @@
 {% extends "base.html" %}
-{% load static %}
-{% block body_class %}game-skin{% endblock %}
 {% block title %}Lobby — Fools Arena{% endblock %}
-{% block extra_head %}
-<link rel="stylesheet" href="{% static 'game/css/game.css' %}">
-{% endblock %}
 {% block content %}
 <div class="game-page lobby-detail-page">
-  <a class="game-back" href="/game/">← All lobbies</a>
+  <a class="game-back" href="{% url 'game-lobby-list-page' %}">← All lobbies</a>
 
   <section class="game-panel">
     <div id="lobby-banner" class="game-banner game-banner--wait" role="status" aria-live="polite"></div>
