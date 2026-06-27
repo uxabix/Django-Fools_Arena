@@ -5,8 +5,8 @@ from django.conf import settings
 
 def asset_versions(_request):
     """Expose file mtimes so static URLs can bust browser cache after CSS/JS edits."""
-    css = settings.BASE_DIR / "game" / "static" / "game" / "css" / "game.css"
-    js = settings.BASE_DIR / "game" / "static" / "game" / "js" / "play_table.js"
+    css = settings.BASE_DIR / "fools" / "static" / "fools" / "css" / "fools.css"
+    js = settings.BASE_DIR / "fools" / "static" / "fools" / "js" / "play_table.js"
     try:
         css_v = int(css.stat().st_mtime)
     except OSError:

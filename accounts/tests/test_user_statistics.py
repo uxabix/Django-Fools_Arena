@@ -1,12 +1,12 @@
 """Tests for statistics-related methods on the User model."""
 
 import pytest
-from game.models import GamePlayer
+from fools.models import GamePlayer
 
 
 @pytest.mark.django_db
 class TestUserStatisticsMethods:
-    """Test suite for user methods related to game statistics."""
+    """Test suite for user methods related to fools statistics."""
 
     def test_get_game_statistics_no_games(self, test_user):
         """
@@ -64,7 +64,7 @@ class TestUserStatisticsMethods:
             test_user: A fixture for a test user.
             second_user: A fixture for a second test user.
         """
-        # Create an active game (should be ignored)
+        # Create an active fools (should be ignored)
         active_game = game_factory(
             lobby=basic_lobby,
             trump_card=basic_cards['ace_hearts'],
@@ -72,7 +72,7 @@ class TestUserStatisticsMethods:
         )
         GamePlayer.objects.create(game=active_game, user=test_user, seat_position=1, cards_remaining=6)
 
-        # Create a finished game (should be counted)
+        # Create a finished fools (should be counted)
         finished_game = game_factory(
             lobby=basic_lobby,
             trump_card=basic_cards['king_spades'],
@@ -84,7 +84,7 @@ class TestUserStatisticsMethods:
 
         stats = test_user.get_game_statistics()
 
-        # Should only count the finished game
+        # Should only count the finished fools
         assert stats['total_games'] == 1
         assert stats['games_won'] == 1
         assert stats['games_lost'] == 0

@@ -1,4 +1,4 @@
-"""Account models for the Durak online multiplayer card game.
+"""Account models for the Durak online multiplayer card game (Fools Arena).
 
 This module defines the User and Block models used for authentication,
 player identity management, and handling of user-to-user blocking within
@@ -11,12 +11,12 @@ from django.db import models
 
 
 class User(AbstractUser):
-    """Extended user model for the Durak card game application.
+    """Extended user model for the Fools Arena accounts app.
 
-    Extends Django ``AbstractUser`` with game-specific fields and helpers.
+    Extends Django ``AbstractUser`` with fools-specific fields and helpers.
     Uses a UUID primary key. Inherits standard auth fields from ``AbstractUser``
     (username, email, password, ``is_active``, ``is_staff``, etc.).
-    Reverse relations include lobby membership, game participation, messages,
+    Reverse relations include lobby membership, fools participation, messages,
     hands, and turns.
     """
 
@@ -59,7 +59,7 @@ class User(AbstractUser):
             Lobby | None: The active lobby instance, or None if the user
             is not currently in any lobby.
         """
-        from game.models import LobbyPlayer
+        from fools.models import LobbyPlayer
         try:
             lobby_player = LobbyPlayer.objects.get(
                 user=self,
@@ -73,12 +73,12 @@ class User(AbstractUser):
         """Return the game the user is currently playing.
 
         Returns:
-            Game | None: The active game instance, or None if the user
+            Game | None: The active fools instance, or None if the user
             is not participating in an in-progress match.
         """
-        from game.models import GamePlayer
+        from fools.models import GamePlayer
         try:
-            game_player = GamePlayer.objects.select_related('game').get(
+            game_player = GamePlayer.objects.select_related('fools').get(
                 user=self,
                 game__status='in_progress'
             )
@@ -112,7 +112,7 @@ class User(AbstractUser):
         Returns:
             bool: True if the user left a lobby, False if they were not part of any lobby.
         """
-        from game.models import LobbyPlayer
+        from fools.models import LobbyPlayer
         try:
             lobby_player = LobbyPlayer.objects.get(
                 user=self,
@@ -139,7 +139,7 @@ class User(AbstractUser):
                 games_lost (int)
                 win_rate (float)
         """
-        from game.models import Game, GamePlayer
+        from fools.models import Game, GamePlayer
 
         finished_games = Game.objects.filter(
             players__user=self,

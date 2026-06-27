@@ -1,12 +1,12 @@
-"""Tests for game-related methods on the User model."""
+"""Tests for fools-related methods on the User model."""
 
 import pytest
-from game.models import GamePlayer
+from fools.models import GamePlayer
 
 
 @pytest.mark.django_db
 class TestUserGameMethods:
-    """Test suite for user methods related to game interactions."""
+    """Test suite for user methods related to fools interactions."""
 
     def test_get_current_game_no_game(self, test_user):
         """
@@ -19,7 +19,7 @@ class TestUserGameMethods:
 
     def test_get_current_game_active_game(self, basic_game, test_user):
         """
-        Tests get_current_game() returns game when user is playing.
+        Tests get_current_game() returns fools when user is playing.
 
         Args:
             basic_game: A fixture for a basic game instance.

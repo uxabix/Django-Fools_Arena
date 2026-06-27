@@ -1,4 +1,4 @@
-"""Admin configuration for the chat system of the Durak card game application.
+"""Admin configuration for the chat app (Fools Arena).
 
 This module defines the Django admin interface configuration for all models
 in the chat app, providing comprehensive management tools for administrators
@@ -162,7 +162,7 @@ class MessageAdmin(admin.ModelAdmin):
 
         if context['type'] == 'lobby' and obj.chat.lobby_id:
             lobby = obj.chat.lobby
-            lobby_url = reverse('admin:game_lobby_change', args=[lobby.pk])
+            lobby_url = reverse('admin:fools_lobby_change', args=[lobby.pk])
             return format_html(
                 '<a href="{}" style="color: #009900;">📋 {}</a>',
                 lobby_url,

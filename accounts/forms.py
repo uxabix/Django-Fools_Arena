@@ -36,7 +36,7 @@ class RegistrationForm(UserCreationForm):
             field = self.fields[name]
             if field.widget.input_type == "checkbox":
                 continue
-            field.widget.attrs.setdefault("class", "game-input")
+            field.widget.attrs.setdefault("class", "fools-input")
             if "password" in name:
                 field.widget.attrs["autocomplete"] = "new-password"
             elif name == "username":
@@ -56,8 +56,8 @@ class LoginForm(AuthenticationForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["username"].widget.attrs.update(
-            {"class": "game-input", "autocomplete": "username"}
+            {"class": "fools-input", "autocomplete": "username"}
         )
         self.fields["password"].widget.attrs.update(
-            {"class": "game-input", "autocomplete": "current-password"}
+            {"class": "fools-input", "autocomplete": "current-password"}
         )

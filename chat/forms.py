@@ -11,7 +11,7 @@ class StartDirectChatForm(forms.Form):
         label="Other user's username",
         help_text="Case-insensitive match to an existing account.",
         widget=forms.TextInput(
-            attrs={"class": "game-input", "placeholder": "Username", "autocomplete": "off"}
+            attrs={"class": "fools-input", "placeholder": "Username", "autocomplete": "off"}
         ),
     )
 
@@ -29,7 +29,7 @@ class ChatMessageForm(forms.Form):
             attrs={
                 "rows": 3,
                 "placeholder": "Type a message…",
-                "class": "game-input game-input--textarea",
+                "class": "fools-input fools-input--textarea",
             }
         ),
     )

@@ -1,7 +1,7 @@
 """Tests for lobby-related methods on the User model."""
 
 import pytest
-from game.models import LobbyPlayer
+from fools.models import LobbyPlayer
 
 
 @pytest.mark.django_db

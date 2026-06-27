@@ -24,13 +24,13 @@ from .forms import RegistrationForm, LoginForm
 def register_view(request):
     """Render and process the registration form."""
     if request.user.is_authenticated:
-        return redirect("game-lobby-list-page")
+        return redirect("fools-lobby-list-page")
     if request.method == 'POST':
         form = RegistrationForm(request.POST)
         if form.is_valid():
             user = form.save()
             auth_login(request, user)
-            return redirect('game-lobby-list-page')
+            return redirect('fools-lobby-list-page')
     else:
         form = RegistrationForm()
     return render(request, 'accounts/registration.html', {'form': form})
@@ -39,12 +39,12 @@ def register_view(request):
 def login_view(request):
     """Render and process the login form."""
     if request.user.is_authenticated:
-        return redirect("game-lobby-list-page")
+        return redirect("fools-lobby-list-page")
     if request.method == 'POST':
         form = LoginForm(request, data=request.POST)
         if form.is_valid():
             auth_login(request, form.get_user())
-            return redirect('game-lobby-list-page')
+            return redirect('fools-lobby-list-page')
     else:
         form = LoginForm()
     return render(request, 'accounts/login.html', {'form': form})

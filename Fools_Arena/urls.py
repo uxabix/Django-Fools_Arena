@@ -26,7 +26,7 @@ from django.urls import path, include
 def home(request):
     """Send visitors to games when signed in, otherwise to login."""
     if request.user.is_authenticated:
-        return redirect("game-lobby-list-page")
+        return redirect("fools-lobby-list-page")
     return redirect("login")
 
 
@@ -36,11 +36,11 @@ urlpatterns = [
     # UI
     path("accounts/", include("accounts.urls")),
     path("chat/", include("chat.urls")),
-    path("game/", include("game.urls")),
+    path("fools/", include("fools.urls")),
     # API
     path("api/accounts/", include("accounts.api_urls")),
     path("api/chat/", include("chat.api_urls")),
-    path("api/game/", include("game.api_urls")),
+    path("api/fools/", include("fools.api_urls")),
 ]
 
 # Static files: in DEBUG serve straight from app ``static/`` folders (no collectstatic needed).

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from accounts.models import Block
 
 if TYPE_CHECKING:
-    from game.models import Lobby
+    from fools.models import Lobby
 
 
 def is_direct_message_blocked(sender, recipient):
@@ -33,15 +33,15 @@ def get_lobby_chat(lobby: Lobby):
     """Return the lobby-linked :class:`~chat.models.Chat`, syncing active players.
 
     Creates ``is_lobby=True`` chat on first use and ensures every non-left
-    :class:`~game.models.LobbyPlayer` is a :class:`~chat.models.ChatParticipant`.
+    :class:`~fools.models.LobbyPlayer` is a :class:`~chat.models.ChatParticipant`.
 
     Args:
-        lobby: :class:`~game.models.Lobby` instance.
+        lobby: :class:`~fools.models.Lobby` instance.
 
     Returns:
         Chat: The canonical lobby chat for this lobby.
     """
-    from game.models import LobbyPlayer
+    from fools.models import LobbyPlayer
 
     from .models import Chat
 

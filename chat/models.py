@@ -1,4 +1,4 @@
-"""Chat models for the Durak card game application.
+"""Chat models for the fools Django application.
 
 This module defines the core models for managing chat rooms and their participants
 in the Durak online multiplayer system. It includes models for representing chats,
@@ -81,7 +81,7 @@ def dm_pair_key(user_a, user_b):
 class Chat(models.Model):
     """Represents a chat room (private, group, or lobby).
 
-    Chats are used to isolate different communication contexts in the game:
+    Chats are used to isolate different communication contexts in the fools app:
     - private chats (DM between two users)
     - group chats
     - automatically created lobby chats (is_lobby=True)
@@ -100,7 +100,7 @@ class Chat(models.Model):
     is_global = models.BooleanField(default=False)
 
     lobby = models.ForeignKey(
-        "game.Lobby",
+        "fools.Lobby",
         on_delete=models.CASCADE,
         null=True,
         blank=True,
